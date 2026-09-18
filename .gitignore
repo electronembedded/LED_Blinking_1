@@ -1,0 +1,20 @@
+# STM32 Build Artifacts (બિલ્ડ દરમિયાન બનતી ફાઇલો)
+Debug/
+Release/
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.su
+*.d
+
+# Toolchain & IDE Specific (IDE ની લોકલ ફાઇલો)
+.settings/
+.project
+.cproject
+*.launch
+
+# Temporary files
+*.tmp
+*~
