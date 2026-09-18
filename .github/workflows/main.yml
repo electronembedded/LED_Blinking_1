@@ -1,0 +1,32 @@
+name: STM32 Firmware Build Automation
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # ૧. ગિટહબ રનર પર તમારો કોડ લાવવા માટે
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # ૨. STM32 માટેનું ARM ક્રોસ-કમ્પાઇલર ઇન્સ્ટોલ કરવા માટે
+    - name: Install ARM Toolchain
+      uses: carlosperate/arm-none-eabi-gcc-action@v1
+      with:
+        release: '10.3-2021.10'
+
+    # ૩. મેક ટૂલ (Make Utility) ઇન્સ્ટોલ કરવા માટે
+    - name: Install Build Tools
+      run: sudo apt-get update && sudo apt-get install -y make
+
+    # ૪. પ્રોજેક્ટને કમ્પાઇલ કરીને .bin/.hex ફાઇલ બનાવવા માટે
+    - name: Build Firmware
+      run: |
+        cd Debug
+        make all
