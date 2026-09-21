@@ -11,9 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # ૧. ગિટહબ સર્વર પર સોર્સ કોડ લાવવા માટે
+    # ૧. ગિટહબ સર્વર પર સોર્સ કોડ અને બધા જ સબમોડ્યુલ્સ (જેમ કે FreeRTOS) ઓટોમેટિક લાવવા માટે
     - name: Checkout Code
       uses: actions/checkout@v4
+      with:
+        submodules: 'recursive' # આ એક જ લાઈન ક્લાઉડમાં Middlewares/FreeRTOS આખું ડાઉનલોડ કરી દેશે
 
     # ૨. STM32F103 (Cortex-M3) માટે ARM ક્રોસ-કમ્પાઇલર ઇન્સ્ટોલ કરવા માટે
     - name: Install ARM Toolchain
@@ -27,7 +29,7 @@ jobs:
         # ઓબ્જેક્ટ ફાઇલો સેવ કરવા માટે નવું ટેમ્પરરી ફોલ્ડર બનાવવું
         mkdir -p build_out
         
-        # પ્રોજેક્ટમાં રહેલી બધી જ .c ફાઇલો (જેમ કે Src/, Core/Src/ કે ગમે ત્યાં હોય) ઓટોમેટિક શોધી લેશે
+        # પ્રોજેક્ટમાં રહેલી બધી જ .c ફાઇલો ઓટોમેટિક શોધી લેશે
         SOURCES=$(find . -name "*.c")
         
         # પ્રોજેક્ટમાં રહેલા બધા જ ઇન્ક્લુડ ફોલ્ડર્સ (.h ફાઇલો માટે) ઓટોમેટિક શોધીને પાથ સેટ કરશે
@@ -43,7 +45,7 @@ jobs:
         # STM32F103 (Cortex-M3) માટેના સ્પેસિફિક ફ્લેગ્સ
         MCU_FLAGS="-mcpu=cortex-m3 -mthumb"
         
-        # STM32F103 માટેના ડિફાઇન ગ્લોબલ મેક્રોઝ (STM32F103xB સામાન્ય રીતે Blue Pill માટે વપરાય છે)
+        # STM32F103 માટેના ડિફાઇન ગ્લોબલ મેક્રોઝ
         DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER"
         
         CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -c -ffunction-sections -fdata-sections"
@@ -74,11 +76,11 @@ jobs:
         echo "ફાઇનલ .hex અને .bin ફાઇલો જનરેટ થઈ રહી છે..."
         # .elf માંથી પ્રિન્ટેબલ .hex અને .bin બનાવવી
         arm-none-eabi-objcopy -O ihex build_out/firmware.elf build_out/firmware.hex
-         arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
+        arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
         
         echo "બિલ્ડ સફળ રહ્યું! ફાઇલો તૈયાર છે."
 
-    # ૪. જનરેટ થયેલી HEX અને BIN ફાઇલોને ગિટહબ આર્ટિફેક્ટ્સ પર અપલોડ કરવી (જેથી તમે ડાઉનલોડ કરી શકો)
+    # ૪. જનરેટ થયેલી HEX અને BIN ફાઇલોને ગિટહબ આર્ટિફેક્ટ્સ પર અપલોડ કરવી
     - name: Upload Output Firmware
       uses: actions/upload-artifact@v4
       with:
@@ -86,4 +88,5 @@ jobs:
         path: |
           build_out/firmware.hex
           build_out/firmware.bin
+
 
