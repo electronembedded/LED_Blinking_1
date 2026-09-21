@@ -69,8 +69,10 @@ jobs:
         )
         
         # STM32F103 માટેની સાચી પોર્ટ ફાઈલ એડ કરવી
+        # STM32F103 માટેની સાચી પોર્ટ ફાઈલ અને મેમરી મેનેજમેન્ટ (Heap) ફાઈલ એડ કરવી
         SOURCES+=( "./Middlewares/FreeRTOS/portable/GCC/ARM_CM3/port.c" )
-        
+        SOURCES+=( "./Middlewares/FreeRTOS/portable/MemMang/heap_4.c" )
+
         echo "કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
         # દરેક .c ફાઇલ માટે યુનિક ઓબ્જેક્ટ .o ફાઇલો બનાવવી (ફોલ્ડર સ્ટ્રક્ચર સાથે જેથી ઓવરરાઈટ ન થાય)
         for file in "${SOURCES[@]}"; do
