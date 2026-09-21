@@ -11,22 +11,79 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # ૧. ગિટહબ રનર પર તમારો કોડ લાવવા માટે
+    # ૧. ગિટહબ સર્વર પર સોર્સ કોડ લાવવા માટે
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # ૨. STM32 માટેનું ARM ક્રોસ-કમ્પાઇલર ઇન્સ્ટોલ કરવા માટે
+    # ૨. STM32F103 (Cortex-M3) માટે ARM ક્રોસ-કમ્પાઇલર ઇન્સ્ટોલ કરવા માટે
     - name: Install ARM Toolchain
       uses: carlosperate/arm-none-eabi-gcc-action@v1
       with:
         release: '10.3-2021.10'
 
-    # ૩. મેક ટૂલ (Make Utility) ઇન્સ્ટોલ કરવા માટે
-    - name: Install Build Tools
-      run: sudo apt-get update && sudo apt-get install -y make
-
-    # ૪. પ્રોજેક્ટને કમ્પાઇલ કરીને .bin/.hex ફાઇલ બનાવવા માટે
-    - name: Build Firmware
+    # ૩. કોડ કમ્પાઇલ કરીને ઓટોમેટિક HEX ફાઇલ જનરેટ કરવી
+    - name: Build Firmware Without Debug Folder
       run: |
-        cd Debug
-        make all
+        # ઓબ્જેક્ટ ફાઇલો સેવ કરવા માટે નવું ટેમ્પરરી ફોલ્ડર બનાવવું
+        mkdir -p build_out
+        
+        # પ્રોજેક્ટમાં રહેલી બધી જ .c ફાઇલો (જેમ કે Src/, Core/Src/ કે ગમે ત્યાં હોય) ઓટોમેટિક શોધી લેશે
+        SOURCES=$(find . -name "*.c")
+        
+        # પ્રોજેક્ટમાં રહેલા બધા જ ઇન્ક્લુડ ફોલ્ડર્સ (.h ફાઇલો માટે) ઓટોમેટિક શોધીને પાથ સેટ કરશે
+        INC_DIRS=$(find . -type d -not -path '*/.*' -not -path './build_out')
+        INCLUDES=""
+        for dir in $INC_DIRS; do
+          # જો ફોલ્ડરમાં .h ફાઇલ હોય તો જ તેને લિસ્ટમાં ઉમેરવું
+          if ls "$dir"/*.h >/dev/null 2>&1; then
+            INCLUDES="$INCLUDES -I$dir"
+          fi
+        done
+        
+        # STM32F103 (Cortex-M3) માટેના સ્પેસિફિક ફ્લેગ્સ
+        MCU_FLAGS="-mcpu=cortex-m3 -mthumb"
+        
+        # STM32F103 માટેના ડિફાઇન ગ્લોબલ મેક્રોઝ (STM32F103xB સામાન્ય રીતે Blue Pill માટે વપરાય છે)
+        DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER"
+        
+        CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -c -ffunction-sections -fdata-sections"
+        
+        echo "કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
+        # દરેક .c ફાઇલને કમ્પાઇલ કરીને .o ફાઇલ બનાવવી
+        for file in $SOURCES; do
+          filename=$(basename "$file")
+          obj="build_out/${filename%.c}.o"
+          echo "Compiling: $file"
+          arm-none-eabi-gcc $CFLAGS "$file" -o "$obj"
+        done
+        
+        echo "લિંકિંગ પ્રોસેસ શરૂ થઈ રહી છે..."
+        # પ્રોજેક્ટમાંથી .ld (Linker Script) ફાઇલ ઓટોમેટિક શોધવી
+        LINKER_SCRIPT=$(find . -name "*.ld" | head -n 1)
+        
+        if [ -z "$LINKER_SCRIPT" ]; then
+          echo "ભૂલ: પ્રોજેક્ટમાં લિંકર સ્ક્રિપ્ટ (.ld ફાઇલ) મળી નથી! મહેરબાની કરીને .ld ફાઇલ પુશ કરો."
+          exit 1
+        fi
+        
+        echo "Using Linker Script: $LINKER_SCRIPT"
+        
+        # બધી ઓબ્જેક્ટ ફાઇલોને લિંક કરીને ફાઇનલ .elf ફાઇલમાં રૂપાંતર કરવું
+        arm-none-eabi-gcc $MCU_FLAGS -T"$LINKER_SCRIPT" build_out/*.o -o build_out/firmware.elf -Wl,--gc-sections --specs=nano.specs -lm
+        
+        echo "ફાઇનલ .hex અને .bin ફાઇલો જનરેટ થઈ રહી છે..."
+        # .elf માંથી પ્રિન્ટેબલ .hex અને .bin બનાવવી
+        arm-none-eabi-objcopy -O ihex build_out/firmware.elf build_out/firmware.hex
+         arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
+        
+        echo "બિલ્ડ સફળ રહ્યું! ફાઇલો તૈયાર છે."
+
+    # ૪. જનરેટ થયેલી HEX અને BIN ફાઇલોને ગિટહબ આર્ટિફેક્ટ્સ પર અપલોડ કરવી (જેથી તમે ડાઉનલોડ કરી શકો)
+    - name: Upload Output Firmware
+      uses: actions/upload-artifact@v4
+      with:
+        name: STM32F103-Firmware
+        path: |
+          build_out/firmware.hex
+          build_out/firmware.bin
+
