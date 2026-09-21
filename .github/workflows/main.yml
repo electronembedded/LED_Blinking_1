@@ -24,60 +24,74 @@ jobs:
         release: '10.3-2021.10'
 
     # ૩. કોડ કમ્પાઇલ કરીને ઓટોમેટિક HEX ફાઇલ જનરેટ કરવી
+    # ૩. કોડ કમ્પાઇલ કરીને ઓટોમેટિક HEX ફાઇલ જનરેટ કરવી (સબમોડ્યુલ સપોર્ટ સાથે)
     - name: Build Firmware Without Debug Folder
       shell: bash
       run: |
         set -euxo pipefail
-    
+
+        # ઓબ્જેક્ટ ફાઇલો સેવ કરવા માટે નવું ટેમ્પરરી ફોલ્ડર બનાવવું
         mkdir -p build_out
-    
+        
+        # STM32F103 (Cortex-M3) માટેના સ્પેસિફિક ફ્લેગ્સ
         MCU_FLAGS="-mcpu=cortex-m3 -mthumb"
-        DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER"
-    
-        INC_DIRS=$(find . \
-          -type d \
+        
+        # ગ્લોબલ મેક્રોઝ (-D_XOPEN_SOURCE=600 ઉમેરવાથી sysmem.c ની caddr_t વાળી એરર ડાયરેક્ટ સોલ્વ થઈ જશે)
+        DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER -D_XOPEN_SOURCE=600"
+        
+        # બધા જ ઇન્ક્લુડ ફોલ્ડર્સ ઓટોમેટિક શોધવા (તમારા પોર્ટેબલ પાથ સિવાયના)
+        INC_DIRS=$(find . -type d \
           -not -path './.git*' \
           -not -path './build_out*' \
           -not -path './Middlewares/FreeRTOS/portable/*')
-    
+        
         INCLUDES=""
         while IFS= read -r dir; do
-          INCLUDES="$INCLUDES -I$dir"
+          if [ -n "$dir" ]; then
+            INCLUDES="$INCLUDES -I$dir"
+          fi
         done <<< "$INC_DIRS"
-    
+        
+        # ખાસ FreeRTOS ના પોર્ટેબલ હેડર્સનો પાથ મેન્યુઅલી ઉમેરવો
+        INCLUDES="$INCLUDES -IMiddlewares/FreeRTOS/portable/GCC/ARM_CM3"
+        
         CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -ffunction-sections -fdata-sections"
-    
+        
+        # બધી જ વેલિડ .c ફાઈલો લિસ્ટ કરવી
         mapfile -t SOURCES < <(
           find . -name '*.c' \
             -not -path './.git/*' \
             -not -path './build_out/*' \
             -not -path './Middlewares/FreeRTOS/portable/*'
         )
-    
-        SOURCES+=(
-          ./Middlewares/FreeRTOS/portable/GCC/ARM_CM3/port.c
-        )
-    
+        
+        # STM32F103 માટેની સાચી પોર્ટ ફાઈલ એડ કરવી
+        SOURCES+=( "./Middlewares/FreeRTOS/portable/GCC/ARM_CM3/port.c" )
+        
+        echo "કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
+        # દરેક .c ફાઇલ માટે યુનિક ઓબ્જેક્ટ .o ફાઇલો બનાવવી (ફોલ્ડર સ્ટ્રક્ચર સાથે જેથી ઓવરરાઈટ ન થાય)
         for file in "${SOURCES[@]}"; do
-          obj="build_out/$(basename "${file%.c}").o"
+          # પાથના સ્લેશ (/) ને અંડરસ્કોર (_) માં બદલીને યુનિક નામ આપવું (જેમ કે Core_Src_main.o)
+          safe_obj_name=$(echo "$file" | sed 's/[\/.]/_/g')
+          obj="build_out/${safe_obj_name}.o"
+          
           echo "Compiling: $file"
           arm-none-eabi-gcc $CFLAGS -c "$file" -o "$obj"
         done
-    
+        
+        echo "લિંકિંગ પ્રોસેસ શરૂ થઈ રહી છે..."
         LINKER_SCRIPT=$(find . -name '*.ld' -not -path './.git/*' | head -n 1)
         if [ -z "$LINKER_SCRIPT" ]; then
-          echo "No linker script found"
+          echo "ભૂલ: પ્રોજેક્ટમાં લિંકર સ્ક્રિપ્ટ (.ld ફાઇલ) મળી નથી!"
           exit 1
         fi
-    
-        arm-none-eabi-gcc $MCU_FLAGS \
-          -T"$LINKER_SCRIPT" \
-          build_out/*.o \
-          -o build_out/firmware.elf \
-          -Wl,--gc-sections \
-          --specs=nano.specs \
-          -lm
-    
+        
+        echo "Using Linker Script: $LINKER_SCRIPT"
+        
+        # બધી ઓબ્જેક્ટ ફાઇલોને લિંક કરીને ફાઇનલ .elf ફાઇલમાં રૂપાંતર કરવું
+        arm-none-eabi-gcc $MCU_FLAGS -T"$LINKER_SCRIPT" build_out/*.o -o build_out/firmware.elf -Wl,--gc-sections --specs=nano.specs -lm
+        
+        echo "ફાઇનલ .hex અને .bin ફાઇલો જનરેટ થઈ રહી છે..."
         arm-none-eabi-objcopy -O ihex build_out/firmware.elf build_out/firmware.hex
         arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
         
