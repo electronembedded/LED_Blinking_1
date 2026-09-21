@@ -25,56 +25,59 @@ jobs:
 
     # ૩. કોડ કમ્પાઇલ કરીને ઓટોમેટિક HEX ફાઇલ જનરેટ કરવી
     - name: Build Firmware Without Debug Folder
+      shell: bash
       run: |
-        # ઓબ્જેક્ટ ફાઇલો સેવ કરવા માટે નવું ટેમ્પરરી ફોલ્ડર બનાવવું
+        set -euxo pipefail
+    
         mkdir -p build_out
-        
-        # પ્રોજેક્ટમાં રહેલી બધી જ .c ફાઇલો ઓટોમેટિક શોધી લેશે
-        SOURCES=$(find . -name "*.c")
-        
-        # પ્રોજેક્ટમાં રહેલા બધા જ ઇન્ક્લુડ ફોલ્ડર્સ (.h ફાઇલો માટે) ઓટોમેટિક શોધીને પાથ સેટ કરશે
-        INC_DIRS=$(find . -type d -not -path '*/.*' -not -path './build_out')
-        INCLUDES=""
-        for dir in $INC_DIRS; do
-          # જો ફોલ્ડરમાં .h ફાઇલ હોય તો જ તેને લિસ્ટમાં ઉમેરવું
-          if ls "$dir"/*.h >/dev/null 2>&1; then
-            INCLUDES="$INCLUDES -I$dir"
-          fi
-        done
-        
-        # STM32F103 (Cortex-M3) માટેના સ્પેસિફિક ફ્લેગ્સ
+    
         MCU_FLAGS="-mcpu=cortex-m3 -mthumb"
-        
-        # STM32F103 માટેના ડિફાઇન ગ્લોબલ મેક્રોઝ
         DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER"
-        
-        CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -c -ffunction-sections -fdata-sections"
-        
-        echo "કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
-        # દરેક .c ફાઇલને કમ્પાઇલ કરીને .o ફાઇલ બનાવવી
-        for file in $SOURCES; do
-          filename=$(basename "$file")
-          obj="build_out/${filename%.c}.o"
+    
+        INC_DIRS=$(find . \
+          -type d \
+          -not -path './.git*' \
+          -not -path './build_out*' \
+          -not -path './Middlewares/FreeRTOS/portable/*')
+    
+        INCLUDES=""
+        while IFS= read -r dir; do
+          INCLUDES="$INCLUDES -I$dir"
+        done <<< "$INC_DIRS"
+    
+        CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -ffunction-sections -fdata-sections"
+    
+        mapfile -t SOURCES < <(
+          find . -name '*.c' \
+            -not -path './.git/*' \
+            -not -path './build_out/*' \
+            -not -path './Middlewares/FreeRTOS/portable/*'
+        )
+    
+        SOURCES+=(
+          ./Middlewares/FreeRTOS/portable/GCC/ARM_CM3/port.c
+        )
+    
+        for file in "${SOURCES[@]}"; do
+          obj="build_out/$(basename "${file%.c}").o"
           echo "Compiling: $file"
-          arm-none-eabi-gcc $CFLAGS "$file" -o "$obj"
+          arm-none-eabi-gcc $CFLAGS -c "$file" -o "$obj"
         done
-        
-        echo "લિંકિંગ પ્રોસેસ શરૂ થઈ રહી છે..."
-        # પ્રોજેક્ટમાંથી .ld (Linker Script) ફાઇલ ઓટોમેટિક શોધવી
-        LINKER_SCRIPT=$(find . -name "*.ld" | head -n 1)
-        
+    
+        LINKER_SCRIPT=$(find . -name '*.ld' -not -path './.git/*' | head -n 1)
         if [ -z "$LINKER_SCRIPT" ]; then
-          echo "ભૂલ: પ્રોજેક્ટમાં લિંકર સ્ક્રિપ્ટ (.ld ફાઇલ) મળી નથી! મહેરબાની કરીને .ld ફાઇલ પુશ કરો."
+          echo "No linker script found"
           exit 1
         fi
-        
-        echo "Using Linker Script: $LINKER_SCRIPT"
-        
-        # બધી ઓબ્જેક્ટ ફાઇલોને લિંક કરીને ફાઇનલ .elf ફાઇલમાં રૂપાંતર કરવું
-        arm-none-eabi-gcc $MCU_FLAGS -T"$LINKER_SCRIPT" build_out/*.o -o build_out/firmware.elf -Wl,--gc-sections --specs=nano.specs -lm
-        
-        echo "ફાઇનલ .hex અને .bin ફાઇલો જનરેટ થઈ રહી છે..."
-        # .elf માંથી પ્રિન્ટેબલ .hex અને .bin બનાવવી
+    
+        arm-none-eabi-gcc $MCU_FLAGS \
+          -T"$LINKER_SCRIPT" \
+          build_out/*.o \
+          -o build_out/firmware.elf \
+          -Wl,--gc-sections \
+          --specs=nano.specs \
+          -lm
+    
         arm-none-eabi-objcopy -O ihex build_out/firmware.elf build_out/firmware.hex
         arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
         
