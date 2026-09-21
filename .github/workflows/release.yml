@@ -1,0 +1,61 @@
+name: Production Firmware Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*' # જ્યારે પણ તમે v1.0.0, v1.0.1 વગેરે ટેગ પુશ કરશો ત્યારે જ આ ટ્રીગર થશે
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # ૧. કોડ ચેકઆઉટ કરવો
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ૨. ટૂલચેન સેટઅપ
+      - name: Install ARM Toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '10.3-2021.10'
+
+      # ૩. ફર્મવેર બિલ્ડ કરવું (એકદમ ક્લીન અને ઓટોમેટેડ સ્ક્રિપ્ટ)
+      - name: Re-build Firmware for Release
+        run: |
+          mkdir -p build_out
+          MCU_FLAGS="-mcpu=cortex-m3 -mthumb"
+          DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER"
+          
+          INC_DIRS=$(find . -type d -not -path './.git*' -not -path './build_out*')
+          INCLUDES=""
+          while IFS= read -r dir; do [ -n "$dir" ] && INCLUDES="$INCLUDES -I$dir"; done <<< "$INC_DIRS"
+          
+          CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -ffunction-sections -fdata-sections"
+          ASFLAGS="$MCU_FLAGS -x assembler-with-cpp -c"
+          
+          mapfile -t ASM_SOURCES < <(find . -name '*.s' -not -path './.git/*' -not -path './build_out/*')
+          for asm_file in "${ASM_SOURCES[@]}"; do
+            safe_asm_name=$(echo "$asm_file" | sed 's/[\/.]/_/g')
+            arm-none-eabi-gcc $ASFLAGS "$asm_file" -o "build_out/${safe_asm_name}.o"
+          done
+          
+          mapfile -t SOURCES < <(find . -name '*.c' -not -path './.git/*' -not -path './build_out/*')
+          for file in "${SOURCES[@]}"; do
+            safe_obj_name=$(echo "$file" | sed 's/[\/.]/_/g')
+            arm-none-eabi-gcc $CFLAGS -c "$file" -o "build_out/${safe_obj_name}.o"
+          done
+          
+          LINKER_SCRIPT=$(find . -name '*.ld' -not -path './.git/*' | head -n 1)
+          arm-none-eabi-gcc $MCU_FLAGS -T"$LINKER_SCRIPT" build_out/*.o -o build_out/firmware.elf -Wl,--gc-sections --specs=nano.specs -lm
+          arm-none-eabi-objcopy -O ihex build_out/firmware.elf build_out/firmware.hex
+          arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
+
+      # ૪. ગિટહબ પર ઓટોમેટિક ઓફિશિયલ રીલીઝ પેજ બનાવવું અને બાયનરી ફાઈલો અપલોડ કરવી
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build_out/firmware.hex
+            build_out/firmware.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
