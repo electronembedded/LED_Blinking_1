@@ -57,7 +57,9 @@ jobs:
         INCLUDES="$INCLUDES -IMiddlewares/FreeRTOS/portable/GCC/ARM_CM3"
         
         CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -ffunction-sections -fdata-sections"
-        ASFLAGS="$MCU_FLAGS -c"
+        
+        # આ મોટો સુધારો છે: સ્મોલ .s ફાઇલને લીનક્સ પર એસેમ્બલ કરવા માટે -x assembler-with-cpp ફ્લેગ ફરજિયાત છે
+        ASFLAGS="$MCU_FLAGS -x assembler-with-cpp -c"
         
         # બધી જ વેલિડ .c ફાઈલો લિસ્ટ કરવી
         mapfile -t SOURCES < <(
@@ -74,7 +76,6 @@ jobs:
         SOURCES+=( "./Middlewares/FreeRTOS/portable/MemMang/heap_4.c" )
         
         echo "૧. એસેમ્બલી (.s) ફાઇલોનું કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
-        # પ્રોજેક્ટમાં રહેલી સ્ટાર્ટઅપ .s ફાઇલ ઓટોમેટિક શોધવી અને કમ્પાઇલ કરવી
         mapfile -t ASM_SOURCES < <(find . -name '*.s' -not -path './.git/*' -not -path './build_out/*')
         for asm_file in "${ASM_SOURCES[@]}"; do
           safe_asm_name=$(echo "$asm_file" | sed 's/[\/.]/_/g')
@@ -99,7 +100,7 @@ jobs:
         
         echo "Using Linker Script: $LINKER_SCRIPT"
         
-        # બધી .o ફાઇલો (જેમાં હવે સ્ટાર્ટઅપ કોડ પણ સામેલ છે) તેને લિંક કરવી
+        # બધી .o ફાઇલોને લિંક કરવી
         arm-none-eabi-gcc $MCU_FLAGS -T"$LINKER_SCRIPT" build_out/*.o -o build_out/firmware.elf -Wl,--gc-sections --specs=nano.specs -lm
         
         echo "૪. ફાઇનલ .hex અને .bin ફાઇલો જનરેટ થઈ રહી છે..."
@@ -116,3 +117,4 @@ jobs:
         path: |
           build_out/firmware.hex
           build_out/firmware.bin
+
