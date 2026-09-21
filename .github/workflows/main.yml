@@ -23,7 +23,6 @@ jobs:
       with:
         release: '10.3-2021.10'
 
-    # ૩. કોડ કમ્પાઇલ કરીને ઓટોમેટિક HEX ફાઇલ જનરેટ કરવી
     # ૩. કોડ કમ્પાઇલ કરીને ઓટોમેટિક HEX ફાઇલ જનરેટ કરવી (સબમોડ્યુલ સપોર્ટ સાથે)
     - name: Build Firmware Without Debug Folder
       shell: bash
@@ -39,13 +38,13 @@ jobs:
         # ગ્લોબલ મેક્રોઝ (-D_XOPEN_SOURCE=600 ઉમેરવાથી sysmem.c ની caddr_t વાળી એરર ડાયરેક્ટ સોલ્વ થઈ જશે)
         DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER -D_XOPEN_SOURCE=600"
         
-        # બધા જ ઇન્ક્લુડ ફોલ્ડર્સ ઓટોમેટિક શોધવા (તમારા પોર્ટેબલ પાથ સિવાયના)
+        # બધા જ ઇન્ક્લુડ ફોલ્ડર્સ ઓટોમેટિક શોધવા (બધા જ બિનજરૂરી ફોલ્ડર્સ પરફેક્ટ બેકસ્લેશ લિંકિંગ સાથે ઇગ્નૉર કર્યા છે)
         INC_DIRS=$(find . -type d \
           -not -path './.git*' \
           -not -path './build_out*' \
-          -not -path './Middlewares/FreeRTOS/portable/*')
-          # INC_DIRS અને SOURCES બંનેમાં નીચેની લાઈન ઉમેરી દેવી
-          -not -path './Middlewares/FreeRTOS/examples/*'
+          -not -path './Middlewares/FreeRTOS/portable*' \
+          -not -path './Middlewares/FreeRTOS/examples*' \
+          -not -path './Middlewares/FreeRTOS/.github*')
 
         INCLUDES=""
         while IFS= read -r dir; do
@@ -64,10 +63,9 @@ jobs:
           find . -name '*.c' \
             -not -path './.git/*' \
             -not -path './build_out/*' \
-            -not -path './Middlewares/FreeRTOS/portable/*'
-            # INC_DIRS અને SOURCES બંનેમાં નીચેની લાઈન ઉમેરી દેવી
-            -not -path './Middlewares/FreeRTOS/examples/*'
-
+            -not -path './Middlewares/FreeRTOS/portable/*' \
+            -not -path './Middlewares/FreeRTOS/examples/*' \
+            -not -path './Middlewares/FreeRTOS/.github/*'
         )
         
         # STM32F103 માટેની સાચી પોર્ટ ફાઈલ એડ કરવી
@@ -100,6 +98,7 @@ jobs:
         arm-none-eabi-objcopy -O ihex build_out/firmware.elf build_out/firmware.hex
         arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
         
+        # ૪. જનરેટ થયેલી HEX અને BIN ફાઇલોને ગિટહબ આર્ટિફેક્ટ્સ પર અપલોડ કરવી
         echo "બિલ્ડ સફળ રહ્યું! ફાઇલો તૈયાર છે."
 
     # ૪. જનરેટ થયેલી HEX અને BIN ફાઇલોને ગિટહબ આર્ટિફેક્ટ્સ પર અપલોડ કરવી
@@ -110,5 +109,6 @@ jobs:
         path: |
           build_out/firmware.hex
           build_out/firmware.bin
+
 
 
