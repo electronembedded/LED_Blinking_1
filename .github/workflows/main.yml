@@ -11,11 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # ૧. ગિટહબ સર્વર પર સોર્સ કોડ અને બધા જ સબમોડ્યુલ્સ (જેમ કે FreeRTOS) ઓટોમેટિક લાવવા માટે
+    # ૧. ગિટહબ સર્વર પર સોર્સ કોડ અને બધા જ સબમોડ્યુલ્સ ઓટોમેટિક લાવવા માટે
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        submodules: 'recursive' # આ એક જ લાઈન ક્લાઉડમાં Middlewares/FreeRTOS આખું ડાઉનલોડ કરી દેશે
+        submodules: 'recursive'
 
     # ૨. STM32F103 (Cortex-M3) માટે ARM ક્રોસ-કમ્પાઇલર ઇન્સ્ટોલ કરવા માટે
     - name: Install ARM Toolchain
@@ -35,10 +35,10 @@ jobs:
         # STM32F103 (Cortex-M3) માટેના સ્પેસિફિક ફ્લેગ્સ
         MCU_FLAGS="-mcpu=cortex-m3 -mthumb"
         
-        # ગ્લોબલ મેક્રોઝ (-D_XOPEN_SOURCE=600 ઉમેરવાથી sysmem.c ની caddr_t વાળી એરર ડાયરેક્ટ સોલ્વ થઈ જશે)
+        # ગ્લોબલ મેક્રોઝ (-D_XOPEN_SOURCE=600 sysmem.c માટે)
         DEFINES="-DSTM32F103xB -DUSE_HAL_DRIVER -D_XOPEN_SOURCE=600"
         
-        # બધા જ ઇન્ક્લુડ ફોલ્ડર્સ ઓટોમેટિક શોધવા (બધા જ બિનજરૂરી ફોલ્ડર્સ પરફેક્ટ બેકસ્લેશ લિંકિંગ સાથે ઇગ્નૉર કર્યા છે)
+        # બધા જ ઇન્ક્લુડ ફોલ્ડર્સ ઓટોમેટિક શોધવા
         INC_DIRS=$(find . -type d \
           -not -path './.git*' \
           -not -path './build_out*' \
@@ -57,6 +57,7 @@ jobs:
         INCLUDES="$INCLUDES -IMiddlewares/FreeRTOS/portable/GCC/ARM_CM3"
         
         CFLAGS="$MCU_FLAGS $DEFINES $INCLUDES -O0 -g3 -Wall -ffunction-sections -fdata-sections"
+        ASFLAGS="$MCU_FLAGS -c"
         
         # બધી જ વેલિડ .c ફાઈલો લિસ્ટ કરવી
         mapfile -t SOURCES < <(
@@ -68,23 +69,28 @@ jobs:
             -not -path './Middlewares/FreeRTOS/.github/*'
         )
         
-        # STM32F103 માટેની સાચી પોર્ટ ફાઈલ એડ કરવી
-        # STM32F103 માટેની સાચી પોર્ટ ફાઈલ અને મેમરી મેનેજમેન્ટ (Heap) ફાઈલ એડ કરવી
+        # FreeRTOS માટેની પોર્ટ અને મેમરી ફાઇલો જોડવી
         SOURCES+=( "./Middlewares/FreeRTOS/portable/GCC/ARM_CM3/port.c" )
         SOURCES+=( "./Middlewares/FreeRTOS/portable/MemMang/heap_4.c" )
-
-        echo "કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
-        # દરેક .c ફાઇલ માટે યુનિક ઓબ્જેક્ટ .o ફાઇલો બનાવવી (ફોલ્ડર સ્ટ્રક્ચર સાથે જેથી ઓવરરાઈટ ન થાય)
+        
+        echo "૧. એસેમ્બલી (.s) ફાઇલોનું કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
+        # પ્રોજેક્ટમાં રહેલી સ્ટાર્ટઅપ .s ફાઇલ ઓટોમેટિક શોધવી અને કમ્પાઇલ કરવી
+        mapfile -t ASM_SOURCES < <(find . -name '*.s' -not -path './.git/*' -not -path './build_out/*')
+        for asm_file in "${ASM_SOURCES[@]}"; do
+          safe_asm_name=$(echo "$asm_file" | sed 's/[\/.]/_/g')
+          echo "Compiling ASM: $asm_file"
+          arm-none-eabi-gcc $ASFLAGS "$asm_file" -o "build_out/${safe_asm_name}.o"
+        done
+        
+        echo "૨. સોર્સ (.c) ફાઇલોનું કમ્પાઈલેશન શરૂ થઈ રહ્યું છે..."
         for file in "${SOURCES[@]}"; do
-          # પાથના સ્લેશ (/) ને અંડરસ્કોર (_) માં બદલીને યુનિક નામ આપવું (જેમ કે Core_Src_main.o)
           safe_obj_name=$(echo "$file" | sed 's/[\/.]/_/g')
           obj="build_out/${safe_obj_name}.o"
-          
-          echo "Compiling: $file"
+          echo "Compiling C: $file"
           arm-none-eabi-gcc $CFLAGS -c "$file" -o "$obj"
         done
         
-        echo "લિંકિંગ પ્રોસેસ શરૂ થઈ રહી છે..."
+        echo "૩. લિંકિંગ પ્રોસેસ શરૂ થઈ રહી છે..."
         LINKER_SCRIPT=$(find . -name '*.ld' -not -path './.git/*' | head -n 1)
         if [ -z "$LINKER_SCRIPT" ]; then
           echo "ભૂલ: પ્રોજેક્ટમાં લિંકર સ્ક્રિપ્ટ (.ld ફાઇલ) મળી નથી!"
@@ -93,14 +99,13 @@ jobs:
         
         echo "Using Linker Script: $LINKER_SCRIPT"
         
-        # બધી ઓબ્જેક્ટ ફાઇલોને લિંક કરીને ફાઇનલ .elf ફાઇલમાં રૂપાંતર કરવું
+        # બધી .o ફાઇલો (જેમાં હવે સ્ટાર્ટઅપ કોડ પણ સામેલ છે) તેને લિંક કરવી
         arm-none-eabi-gcc $MCU_FLAGS -T"$LINKER_SCRIPT" build_out/*.o -o build_out/firmware.elf -Wl,--gc-sections --specs=nano.specs -lm
         
-        echo "ફાઇનલ .hex અને .bin ફાઇલો જનરેટ થઈ રહી છે..."
+        echo "૪. ફાઇનલ .hex અને .bin ફાઇલો જનરેટ થઈ રહી છે..."
         arm-none-eabi-objcopy -O ihex build_out/firmware.elf build_out/firmware.hex
         arm-none-eabi-objcopy -O binary build_out/firmware.elf build_out/firmware.bin
         
-        # ૪. જનરેટ થયેલી HEX અને BIN ફાઇલોને ગિટહબ આર્ટિફેક્ટ્સ પર અપલોડ કરવી
         echo "બિલ્ડ સફળ રહ્યું! ફાઇલો તૈયાર છે."
 
     # ૪. જનરેટ થયેલી HEX અને BIN ફાઇલોને ગિટહબ આર્ટિફેક્ટ્સ પર અપલોડ કરવી
@@ -111,6 +116,3 @@ jobs:
         path: |
           build_out/firmware.hex
           build_out/firmware.bin
-
-
-
