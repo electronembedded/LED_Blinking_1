@@ -44,7 +44,9 @@ jobs:
           -not -path './.git*' \
           -not -path './build_out*' \
           -not -path './Middlewares/FreeRTOS/portable/*')
-        
+          # INC_DIRS અને SOURCES બંનેમાં નીચેની લાઈન ઉમેરી દેવી
+          -not -path './Middlewares/FreeRTOS/examples/*'
+
         INCLUDES=""
         while IFS= read -r dir; do
           if [ -n "$dir" ]; then
@@ -63,6 +65,9 @@ jobs:
             -not -path './.git/*' \
             -not -path './build_out/*' \
             -not -path './Middlewares/FreeRTOS/portable/*'
+            # INC_DIRS અને SOURCES બંનેમાં નીચેની લાઈન ઉમેરી દેવી
+            -not -path './Middlewares/FreeRTOS/examples/*'
+
         )
         
         # STM32F103 માટેની સાચી પોર્ટ ફાઈલ એડ કરવી
